@@ -2,16 +2,59 @@
 
 import sys
 import os
+
 import re
 import glob
 import datetime
+import calendar as cal
+import netCDF4
 
-import netCDF4 as nc
+
+
+def main():
+    ###
+    # get arguments. this should be:
+    # 1. a directory with GRDC station data
+    # 2. "daily" or "monthly" to indicatie what type of GRDC data
+    # 3. a fileName of the netCDF file to save.
+    # 4. a startDate provided in YYYY-MM-DD
+    # 5. a endDate provided in YYYY-MM-DD
+    ###
+
+
+    argument = sys.argv
+    print(argument)
+    print(argument[1])
+    #check for right number of arguments
+    if len(argument) == 6:
+        startDate = argument[4]
+        endDate = argument[5]
+    elif len(argument) == 4:
+        startDate = None
+        endDate = None
+    else:
+        print("wrong number of arguments")
+        sys.exit()
+
+    #two mandatory arguments
+    inputLocation = argument[1]
+    outputFile = argument[3]
+    timeType = argument[2]
+
+        
+    #make a structure with all GRDC data within 
+    # get GRDC attributes of all stations:
+    GRDCData = readGRDC(inputLocation,timeType, startDate,endDate)
+
+    #write GRDC data to NetCDF file
+    writeNetCDF(outputFile, GRDCData, timeType)
+
+#END OF MAIN
 
 
 #reads GRDC files from location, select station data valid in date selection
 #TODO add function to provide netCDF mask file and only provide stations that are within mask
-def readGRDC(inputLocation,startDate=None,endDate=None):
+def readGRDC(inputLocation, timeType, startDate=None,endDate=None):
 
     if (startDate != None) and (endDate != None):
         startDate = datetime.datetime.strptime(str(startDate),'%Y-%m-%d')
@@ -33,7 +76,8 @@ def readGRDC(inputLocation,startDate=None,endDate=None):
             "unit",
             "dataSetContent",
             "timeStamps",
-            "dischargeData"]
+            "timeStampsEndInterval",
+             "dischargeData"]
     
     #initially, set everything to empty
     for key in grdc_dict_keys: attributeGRDC[key] = {}
@@ -127,22 +171,27 @@ def readGRDC(inputLocation,startDate=None,endDate=None):
             # get the timeStamps and actual data
             if nrMeasurements is not "NA":
                 timeStamps=[]
+                timeStampsEndInterval=[]
                 dischargeData=[]
                 for measurement in range(0, nrMeasurements):
                     rawLineSplit = allLines[41+measurement].split(";")
-                    
-                    if dataSetContent == "MEANMONTHLYDISCHARGE":
+                    if timeType == "monthly":
                         timeStamps.append(datetime.datetime.strptime(str(rawLineSplit[0]),'%Y-%m-00'))
+                        timeStampsEndInterval.append(add_months(datetime.datetime.strptime(str(rawLineSplit[0]),'%Y-%m-00'), 1))
                         
-                    elif dataSetContent == "MEANDAILYDISCHARGE":
-                        timeStamps.append(datetime.datetime.strptime(str(rawLineSplit[0]),'%Y-%m-%d'))
+                    elif timeType == "daily":
+                        timeDaily = datetime.datetime.strptime(str(rawLineSplit[0]),'%Y-%m-%d')
+                        timeStamps.append(timeDaily)
+                        timeStampsEndInterval.append(timeDaily + datetime.timedelta(days=1))
                     else:
+                        print("wtf")
                         timeStamps.append(-1)
-                        print("Unknown dataSet type")
                         
-                    dischargeData.append(float(rawLineSplit[2]))
+                        
+                    dischargeData.append(float(rawLineSplit[3]))
 
                 attributeGRDC["timeStamps"][str(id_from_grdc)] = timeStamps
+                attributeGRDC["timeStampsEndInterval"][str(id_from_grdc)] = timeStampsEndInterval
                 attributeGRDC["dischargeData"][str(id_from_grdc)] = dischargeData
 
             attributeGRDC["id_from_grdc"][str(id_from_grdc)]                 = id_from_grdc
@@ -156,18 +205,89 @@ def readGRDC(inputLocation,startDate=None,endDate=None):
             attributeGRDC["unit"][str(id_from_grdc)]                         = units
             attributeGRDC["dataSetContent"][str(id_from_grdc)]               = dataSetContent
             
-
-            print("GRDC station "+str(id_from_file_name)+" ("+str(fileName)+") is used.")
-
-
+            
 
     return attributeGRDC
 
+def add_months(sourcedate,months):
+    ### add number of months to a datetime object. stolen from
+    # http://stackoverflow.com/questions/4130922/how-to-increment-datetime-month-in-python
+    ###
+    month = sourcedate.month - 1 + months
+    year = sourcedate.year + month / 12
+    month = month % 12 + 1
+    day = min(sourcedate.day,cal.monthrange(year,month)[1])
+    return datetime.datetime(year,month,day,sourcedate.hour,sourcedate.minute)
+
+def writeNetCDF(outputFile, GRDCData, timeScale):
+    """using a structure with GRDCData, create a netCDF file with time-series-objects"""
+
+    reference_date = "days since 1850-01-01 00:00"
+    #remove old file
+    if os.path.isfile(outputFile):
+        os.remove(outputFile)
+
+    cdf = netCDF4.Dataset(outputFile, format="NETCDF4", mode="w", clobber=False )
+    dimdev = cdf.createDimension( "site", size=len(GRDCData["id_from_grdc"]) )
+    dimtime = cdf.createDimension( "time",   size=None )
+    
+    varlat = cdf.createVariable( "lat", 'f4', ['site'] )
+    varlat.units = "degrees_north"
+
+    varlon = cdf.createVariable( "lon", 'f4', ['site'] )
+    varlon.units = "degrees_east"
+
+    vartime = cdf.createVariable( "time", 'i4', ["time",] , fill_value=-999 )
+    vartime.units = reference_date
+    vartime.calendar = "standard"
 
 
-def writeNetCDF(outputFile, GRDCData):
-    #using a structure with GRDCData, create a netCDF file with time-series-objects
 
+
+   
+
+
+    varDischarge = cdf.createVariable( "discharge", 'f4', ['time','site',], zlib=True, fill_value=-999.000 )
+    varDischarge.units = "m3/s"
+    varDischarge.coordinates = "lat lon"
+    varDischarge.cell_methods = "mean"
+
+
+    istart = -999
+    print "Creating new file"
+
+    stationCounter = 0
+
+    for stationID in GRDCData["id_from_grdc"]:
+
+        #add station meta-data
+        print(stationID)
+
+        varlat[stationCounter] =  GRDCData["grdc_latitude_in_arc_degree"][stationID]
+        varlon[stationCounter] =  GRDCData["grdc_longitude_in_arc_degree"][stationID]
+        
+
+        for timeCounter in range(0,len(GRDCData["dischargeData"][stationID])):
+
+            #add measurement and timestamp
+            daysSinceRefTime = int(netCDF4.date2num( GRDCData["timeStamps"][stationID][timeCounter], reference_date, calendar='standard' ))
+            daysSinceRefTimeEndInterval = int(netCDF4.date2num( GRDCData["timeStampsEndInterval"][stationID][timeCounter], reference_date, calendar='standard' )) - 1
+            if daysSinceRefTimeEndInterval <= daysSinceRefTime:
+                vartime[daysSinceRefTime] = netCDF4.date2num( GRDCData["timeStamps"][stationID][timeCounter], reference_date, calendar='standard' )
+                varDischarge[daysSinceRefTime, stationCounter] = GRDCData["dischargeData"][stationID][timeCounter]
+            else:
+                vartime[daysSinceRefTime:daysSinceRefTimeEndInterval] = netCDF4.date2num( GRDCData["timeStamps"][stationID][timeCounter], reference_date, calendar='standard' )
+                varDischarge[daysSinceRefTime:daysSinceRefTimeEndInterval, stationCounter] = GRDCData["dischargeData"][stationID][timeCounter]
+
+        stationCounter = stationCounter + 1
+
+
+    # works because:
+    # daily observations
+    # timestep is a day
+    # reference time is in 'days since'
+    vartime[...] = range(0, len(vartime)-1) # * dt==1
+    
     return 1
 
 
@@ -179,35 +299,5 @@ def writeNetCDF(outputFile, GRDCData):
 
 
 
-# get arguments. this should be:
-# 1. a directory with GRDC station data
-# 2. a fileName of the netCDF file to save.
-# 3. a startDate provided in YYYY-MM-DD
-# 4. a endDate provided in YYYY-MM-DD
-
-
-argument = sys.argv
-print(argument)
-print(argument[1])
-#check for right number of arguments
-if len(argument) == 5:
-    startDate = argument[3]
-    endDate = argument[4]
-elif len(argument) == 3:
-    startDate = None
-    endDate = None
-else:
-    print("wrong number of arguments")
-    sys.exit()
-
-#two mandatory arguments
-inputLocation = argument[1]
-outputFile = argument[2]
-print(type(inputLocation))
-#make a structure with all GRDC data within 
-# get GRDC attributes of all stations:
-GRDCData = readGRDC(inputLocation,startDate,endDate)
-
-writeNetCDF(outputFile, GRDCData)
-
-  
+if __name__ == "__main__":
+    main()
