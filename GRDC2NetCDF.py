@@ -176,13 +176,16 @@ def readGRDC(inputLocation, timeType, startDate=None,endDate=None):
                 for measurement in range(0, nrMeasurements):
                     rawLineSplit = allLines[41+measurement].split(";")
                     if timeType == "monthly":
-                        timeStamps.append(datetime.datetime.strptime(str(rawLineSplit[0]),'%Y-%m-00'))
-                        timeStampsEndInterval.append(add_months(datetime.datetime.strptime(str(rawLineSplit[0]),'%Y-%m-00'), 1))
+                        timeStamp=datetime.datetime.strptime(str(rawLineSplit[0]),'%Y-%m-00')
+                        if startDate == None or (startDate <= timeStamp and endDate >= timeStamp):
+                            timeStamps.append(timeStamp)
+                            timeStampsEndInterval.append(add_months(timeStamp, 1))
                         
                     elif timeType == "daily":
-                        timeDaily = datetime.datetime.strptime(str(rawLineSplit[0]),'%Y-%m-%d')
-                        timeStamps.append(timeDaily)
-                        timeStampsEndInterval.append(timeDaily + datetime.timedelta(days=1))
+                        timeStamp = datetime.datetime.strptime(str(rawLineSplit[0]),'%Y-%m-%d')
+                        if startDate == None or (startDate <= timeStamp and endDate >= timeStamp):
+                            timeStamps.append(timeStamp)
+                            timeStampsEndInterval.append(timeStamp + datetime.timedelta(days=1))
                     else:
                         print("wtf")
                         timeStamps.append(-1)
@@ -210,9 +213,9 @@ def readGRDC(inputLocation, timeType, startDate=None,endDate=None):
     return attributeGRDC
 
 def add_months(sourcedate,months):
-    ### add number of months to a datetime object. stolen from
+    """ add number of months to a datetime object. stolen from
     # http://stackoverflow.com/questions/4130922/how-to-increment-datetime-month-in-python
-    ###
+    """
     month = sourcedate.month - 1 + months
     year = sourcedate.year + month / 12
     month = month % 12 + 1
@@ -231,13 +234,13 @@ def writeNetCDF(outputFile, GRDCData, timeScale):
     dimdev = cdf.createDimension( "site", size=len(GRDCData["id_from_grdc"]) )
     dimtime = cdf.createDimension( "time",   size=None )
     
-    varlat = cdf.createVariable( "lat", 'f4', ['site'] )
+    varlat = cdf.createVariable( "lat", 'f4', ['site'], zlib = True )
     varlat.units = "degrees_north"
 
-    varlon = cdf.createVariable( "lon", 'f4', ['site'] )
+    varlon = cdf.createVariable( "lon", 'f4', ['site'], zlib = True )
     varlon.units = "degrees_east"
 
-    vartime = cdf.createVariable( "time", 'i4', ["time",] , fill_value=-999 )
+    vartime = cdf.createVariable( "time", 'i4', ["time",] , fill_value=-999, zlib = True )
     vartime.units = reference_date
     vartime.calendar = "standard"
 
@@ -271,32 +274,20 @@ def writeNetCDF(outputFile, GRDCData, timeScale):
 
             #add measurement and timestamp
             daysSinceRefTime = int(netCDF4.date2num( GRDCData["timeStamps"][stationID][timeCounter], reference_date, calendar='standard' ))
-            daysSinceRefTimeEndInterval = int(netCDF4.date2num( GRDCData["timeStampsEndInterval"][stationID][timeCounter], reference_date, calendar='standard' )) - 1
-            if daysSinceRefTimeEndInterval <= daysSinceRefTime:
-                vartime[daysSinceRefTime] = netCDF4.date2num( GRDCData["timeStamps"][stationID][timeCounter], reference_date, calendar='standard' )
-                varDischarge[daysSinceRefTime, stationCounter] = GRDCData["dischargeData"][stationID][timeCounter]
-            else:
-                vartime[daysSinceRefTime:daysSinceRefTimeEndInterval] = netCDF4.date2num( GRDCData["timeStamps"][stationID][timeCounter], reference_date, calendar='standard' )
-                varDischarge[daysSinceRefTime:daysSinceRefTimeEndInterval, stationCounter] = GRDCData["dischargeData"][stationID][timeCounter]
+            daysSinceRefTimeEndInterval = int(netCDF4.date2num( GRDCData["timeStampsEndInterval"][stationID][timeCounter], reference_date, calendar='standard' ))
+            for dayIndex in range(daysSinceRefTime,daysSinceRefTimeEndInterval):
+                vartime[dayIndex] = netCDF4.date2num( GRDCData["timeStamps"][stationID][timeCounter], reference_date, calendar='standard' )
+                varDischarge[dayIndex, stationCounter] = GRDCData["dischargeData"][stationID][timeCounter]
 
         stationCounter = stationCounter + 1
 
 
     # works because:
-    # daily observations
     # timestep is a day
     # reference time is in 'days since'
     vartime[...] = range(0, len(vartime)-1) # * dt==1
     
     return 1
-
-
-
-
-
-
-
-
 
 
 if __name__ == "__main__":
