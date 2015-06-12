@@ -167,12 +167,12 @@ def readGRDC(inputLocation, timeType, startDate=None,endDate=None):
 
             print(nrMeasurements)
 
+            timeStamps=[]
+            timeStampsEndInterval=[]
+            dischargeData=[]
 
             # get the timeStamps and actual data
             if nrMeasurements is not "NA":
-                timeStamps=[]
-                timeStampsEndInterval=[]
-                dischargeData=[]
                 for measurement in range(0, nrMeasurements):
                     rawLineSplit = allLines[41+measurement].split(";")
                     if timeType == "monthly":
@@ -180,33 +180,33 @@ def readGRDC(inputLocation, timeType, startDate=None,endDate=None):
                         if startDate == None or (startDate <= timeStamp and endDate >= timeStamp):
                             timeStamps.append(timeStamp)
                             timeStampsEndInterval.append(add_months(timeStamp, 1))
+                            dischargeData.append(float(rawLineSplit[3]))
                         
                     elif timeType == "daily":
                         timeStamp = datetime.datetime.strptime(str(rawLineSplit[0]),'%Y-%m-%d')
                         if startDate == None or (startDate <= timeStamp and endDate >= timeStamp):
                             timeStamps.append(timeStamp)
                             timeStampsEndInterval.append(timeStamp + datetime.timedelta(days=1))
+                            dischargeData.append(float(rawLineSplit[3]))
                     else:
                         print("wtf")
                         timeStamps.append(-1)
-                        
-                        
-                    dischargeData.append(float(rawLineSplit[3]))
 
+            if timeStamps is not []:
                 attributeGRDC["timeStamps"][str(id_from_grdc)] = timeStamps
                 attributeGRDC["timeStampsEndInterval"][str(id_from_grdc)] = timeStampsEndInterval
                 attributeGRDC["dischargeData"][str(id_from_grdc)] = dischargeData
 
-            attributeGRDC["id_from_grdc"][str(id_from_grdc)]                 = id_from_grdc
-            attributeGRDC["grdc_file_name"][str(id_from_grdc)]               = fileName
-            attributeGRDC["river_name"][str(id_from_grdc)]                   = river_name
-            attributeGRDC["station_name"][str(id_from_grdc)]                 = station_name
-            attributeGRDC["country_code"][str(id_from_grdc)]                 = country_code
-            attributeGRDC["grdc_latitude_in_arc_degree"][str(id_from_grdc)]  = grdc_latitude_in_arc_degree 
-            attributeGRDC["grdc_longitude_in_arc_degree"][str(id_from_grdc)] = grdc_longitude_in_arc_degree
-            attributeGRDC["grdc_catchment_area_in_km2"][str(id_from_grdc)]   = grdc_catchment_area_in_km2
-            attributeGRDC["unit"][str(id_from_grdc)]                         = units
-            attributeGRDC["dataSetContent"][str(id_from_grdc)]               = dataSetContent
+                attributeGRDC["id_from_grdc"][str(id_from_grdc)]                 = id_from_grdc
+                attributeGRDC["grdc_file_name"][str(id_from_grdc)]               = fileName
+                attributeGRDC["river_name"][str(id_from_grdc)]                   = river_name
+                attributeGRDC["station_name"][str(id_from_grdc)]                 = station_name
+                attributeGRDC["country_code"][str(id_from_grdc)]                 = country_code
+                attributeGRDC["grdc_latitude_in_arc_degree"][str(id_from_grdc)]  = grdc_latitude_in_arc_degree 
+                attributeGRDC["grdc_longitude_in_arc_degree"][str(id_from_grdc)] = grdc_longitude_in_arc_degree
+                attributeGRDC["grdc_catchment_area_in_km2"][str(id_from_grdc)]   = grdc_catchment_area_in_km2
+                attributeGRDC["unit"][str(id_from_grdc)]                         = units
+                attributeGRDC["dataSetContent"][str(id_from_grdc)]               = dataSetContent
             
             
 
@@ -244,19 +244,21 @@ def writeNetCDF(outputFile, GRDCData, timeScale):
     vartime.units = reference_date
     vartime.calendar = "standard"
 
+    startDate=[]
+    endDate=-1850*365 #jan first of year zero
 
 
-
-   
-
+    for stationID in GRDCData["id_from_grdc"]:
+        startDate = min(startDate,int(netCDF4.date2num( GRDCData["timeStamps"][stationID][0], reference_date, calendar='standard' )))
+        endDate = max(endDate,int(netCDF4.date2num( GRDCData["timeStampsEndInterval"][stationID][-1], reference_date, calendar='standard' )))
+    vartime[...] = range(startDate, endDate) # * dt==1
+    print(startDate)
+    print(endDate)
 
     varDischarge = cdf.createVariable( "discharge", 'f4', ['time','site',], zlib=True, fill_value=-999.000 )
     varDischarge.units = "m3/s"
     varDischarge.coordinates = "lat lon"
-    varDischarge.cell_methods = "mean"
-
-
-    istart = -999
+    
     print "Creating new file"
 
     stationCounter = 0
@@ -275,8 +277,7 @@ def writeNetCDF(outputFile, GRDCData, timeScale):
             #add measurement and timestamp
             daysSinceRefTime = int(netCDF4.date2num( GRDCData["timeStamps"][stationID][timeCounter], reference_date, calendar='standard' ))
             daysSinceRefTimeEndInterval = int(netCDF4.date2num( GRDCData["timeStampsEndInterval"][stationID][timeCounter], reference_date, calendar='standard' ))
-            for dayIndex in range(daysSinceRefTime,daysSinceRefTimeEndInterval):
-                vartime[dayIndex] = netCDF4.date2num( GRDCData["timeStamps"][stationID][timeCounter], reference_date, calendar='standard' )
+            for dayIndex in range(daysSinceRefTime - startDate,daysSinceRefTimeEndInterval - startDate):
                 varDischarge[dayIndex, stationCounter] = GRDCData["dischargeData"][stationID][timeCounter]
 
         stationCounter = stationCounter + 1
@@ -285,7 +286,7 @@ def writeNetCDF(outputFile, GRDCData, timeScale):
     # works because:
     # timestep is a day
     # reference time is in 'days since'
-    vartime[...] = range(0, len(vartime)-1) # * dt==1
+    #vartime[...] = range(0, len(vartime)-1) # * dt==1
     
     return 1
 
