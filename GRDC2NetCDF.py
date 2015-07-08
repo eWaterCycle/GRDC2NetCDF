@@ -10,8 +10,7 @@ outputFile: a fileName of the netCDF file to save.
 timeType: a string, either daily or monthly to indicatie what type of GRDC data
 startDate: a startDate provided in YYYY-MM-DD
 endDate: a endDate provided in YYYY-MM-DD
-The resulting netCDF file will contain point-time series, ie. not a grid! This is
-according to the NetCDF CF conventions.
+The resulting netCDF file will contain point-time series, ie. not a grid! 
 
 This function was written as part of the eWaterCycle project (eWaterCycle.org).
 In the eWaterCycle project, the output of this function is used to compare the fore-
