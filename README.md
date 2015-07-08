@@ -1,8 +1,7 @@
 # GRDC2NetCDF
 Python code to convert Global Runoff Data Center (GRDC) files to NetCDF
 
-The resulting netCDF file will contain point-time series, ie. not a grid! This is
-according to the NetCDF CF conventions.
+The resulting netCDF file will contain point-time series, ie. not a grid! 
 
 This function was written as part of the eWaterCycle project (http://eWaterCycle.org).
 In the eWaterCycle project, the output of this function is used to compare the fore-
