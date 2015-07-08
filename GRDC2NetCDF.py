@@ -1,4 +1,28 @@
-#pre-processing of GRDC files into netCDF
+#!/usr/bin/env python
+"""
+TL:DR pre-processing of GRDC files into netCDF.
+
+The function grdc2netcdf converts files from the Global Runoff Data Center (GRDC,
+http://www.bafg.de/GRDC/EN/Home/homepage_node.html) into a NetCDF file. Required
+inputs are:
+inputLocation: a directory with GRDC station data
+outputFile: a fileName of the netCDF file to save.
+timeType: a string, either daily or monthly to indicatie what type of GRDC data
+startDate: a startDate provided in YYYY-MM-DD
+endDate: a endDate provided in YYYY-MM-DD
+The resulting netCDF file will contain point-time series, ie. not a grid! This is
+according to the NetCDF CF conventions.
+
+This function was written as part of the eWaterCycle project (eWaterCycle.org).
+In the eWaterCycle project, the output of this function is used to compare the fore-
+casts of the eWaterCycle project to measured discharges. The comparison is done using
+the Climate Data Operators (CDO) toolset (https://code.zmaw.de/projects/cdo).
+
+This function is written by Rolf Hut (https://github.com/RolfHut/)
+On this software, the Apache 2.0 license applies (http://www.apache.org/licenses/LICENSE-2.0)
+with the addition that any scientific publication that uses this work, should cite it using
+the following DOI: 
+"""
 
 import sys
 import os
@@ -11,50 +35,35 @@ import netCDF4
 
 
 
-def main():
+def grdc2netcdf(inputLocation,outputFile,timeType,startDate,endDate):
     ###
     # get arguments. this should be:
-    # 1. a directory with GRDC station data
-    # 2. "daily" or "monthly" to indicatie what type of GRDC data
-    # 3. a fileName of the netCDF file to save.
-    # 4. a startDate provided in YYYY-MM-DD
-    # 5. a endDate provided in YYYY-MM-DD
+    # inputLocation: a directory with GRDC station data
+    # outputFile: a fileName of the netCDF file to save.
+    # timeType: "daily" or "monthly" to indicatie what type of GRDC data
+    # startDate: a startDate provided in YYYY-MM-DD
+    # endDate: a endDate provided in YYYY-MM-DD
     ###
 
 
-    argument = sys.argv
-    print(argument)
-    print(argument[1])
-    #check for right number of arguments
-    if len(argument) == 6:
-        startDate = argument[4]
-        endDate = argument[5]
-    elif len(argument) == 4:
-        startDate = None
-        endDate = None
-    else:
-        print("wrong number of arguments")
-        sys.exit()
 
-    #two mandatory arguments
-    inputLocation = argument[1]
-    outputFile = argument[3]
-    timeType = argument[2]
 
         
     #make a structure with all GRDC data within 
     # get GRDC attributes of all stations:
-    GRDCData = readGRDC(inputLocation,timeType, startDate,endDate)
+    GRDCData = read_grdc(inputLocation,timeType, startDate,endDate)
 
     #write GRDC data to NetCDF file
-    writeNetCDF(outputFile, GRDCData, timeType)
+    write_netcdf(outputFile, GRDCData, timeType)
 
 #END OF MAIN
 
 
 #reads GRDC files from location, select station data valid in date selection
 #TODO add function to provide netCDF mask file and only provide stations that are within mask
-def readGRDC(inputLocation, timeType, startDate=None,endDate=None):
+def read_grdc(inputLocation, timeType, startDate=None,endDate=None):
+    #this function is based on earlier work by Edwin Sutanudjaja from Utrecht University.
+    # https://github.com/edwinkost/discharge_analysis_IWMI
 
     if (startDate != None) and (endDate != None):
         startDate = datetime.datetime.strptime(str(startDate),'%Y-%m-%d')
@@ -222,7 +231,7 @@ def add_months(sourcedate,months):
     day = min(sourcedate.day,cal.monthrange(year,month)[1])
     return datetime.datetime(year,month,day,sourcedate.hour,sourcedate.minute)
 
-def writeNetCDF(outputFile, GRDCData, timeScale):
+def write_netcdf(outputFile, GRDCData, timeScale):
     """using a structure with GRDCData, create a netCDF file with time-series-objects"""
 
     reference_date = "days since 1850-01-01 00:00"
@@ -282,14 +291,28 @@ def writeNetCDF(outputFile, GRDCData, timeScale):
 
         stationCounter = stationCounter + 1
 
-
-    # works because:
-    # timestep is a day
-    # reference time is in 'days since'
-    #vartime[...] = range(0, len(vartime)-1) # * dt==1
     
     return 1
 
 
 if __name__ == "__main__":
-    main()
+    argument = sys.argv
+    print(argument)
+    print(argument[1])
+    #check for right number of arguments
+    if len(argument) == 6:
+        startDate = argument[4]
+        endDate = argument[5]
+    elif len(argument) == 4:
+        startDate = None
+        endDate = None
+    else:
+        print("wrong number of arguments")
+        sys.exit()
+
+    #two mandatory arguments
+    inputLocation = argument[1]
+    outputFile = argument[3]
+    timeType = argument[2]
+    
+    grdc2netcdf(inputLocation,outputFile,timeType,startDate,endDate)
