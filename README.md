@@ -11,5 +11,5 @@ the Climate Data Operators (CDO) toolset (https://code.zmaw.de/projects/cdo).
 This function is written by Rolf Hut (https://github.com/RolfHut/)
 On this software, the Apache 2.0 license applies (http://www.apache.org/licenses/LICENSE-2.0)
 with the addition that any scientific publication that uses this work, should cite it using
-the following DOI: 
+the following DOI: [![DOI](https://zenodo.org/badge/doi/10.5281/zenodo.19695.svg)](http://dx.doi.org/10.5281/zenodo.19695)
 
